@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>School Lost &amp; Found</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">L&amp;F</div>
+      <div class="brand-text">
+        <h1>School Lost &amp; Found</h1>
+        <p>Find your clothes. Claim what's yours.</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-gallery" class="view active">
+      <div class="toolbar">
+        <div class="search-wrap">
+          <input id="search" type="text" placeholder="Search brand, color, type..." />
+        </div>
+        <div class="filters">
+          <select id="filter-type">
+            <option value="">All types</option>
+            <option>Jacket</option>
+            <option>Hoodie</option>
+            <option>Sweater</option>
+            <option>Shirt</option>
+            <option>T-Shirt</option>
+            <option>Pants</option>
+            <option>Shorts</option>
+            <option>Shoes</option>
+            <option>Hat</option>
+            <option>Scarf</option>
+            <option>Gloves</option>
+            <option>Other</option>
+          </select>
+          <select id="filter-status">
+            <option value="available">Available</option>
+            <option value="claimed">Claimed</option>
+            <option value="all">All items</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="gallery" class="gallery"></div>
+      <div id="empty" class="empty hidden">
+        <h2>Nothing here yet</h2>
+        <p>No items match your search. Check back later.</p>
+      </div>
+    </section>
+
+    <section id="view-staff" class="view">
+      <div id="staff-panel" class="staff-panel">
+        <div class="staff-head">
+          <h2>Add a Found Item</h2>
+          <button id="lock-btn" class="btn ghost">Exit</button>
+        </div>
+
+        <form id="add-form" class="add-form">
+          <div class="photo-col">
+            <label class="photo-drop" for="photo-input">
+              <img id="photo-preview" class="photo-preview hidden" alt="Preview" />
+              <div id="photo-placeholder" class="photo-placeholder">
+                <span>Take or upload a photo</span>
+              </div>
+            </label>
+            <input id="photo-input" type="file" accept="image/*" capture="environment" hidden />
+            <button type="button" id="clear-photo" class="btn ghost small hidden">Remove photo</button>
+          </div>
+
+          <div class="fields-col">
+            <div class="field">
+              <label>Item type</label>
+              <select id="in-type" required>
+                <option value="" disabled selected>Select type</option>
+                <option>Jacket</option>
+                <option>Hoodie</option>
+                <option>Sweater</option>
+                <option>Shirt</option>
+                <option>T-Shirt</option>
+                <option>Pants</option>
+                <option>Shorts</option>
+                <option>Shoes</option>
+                <option>Hat</option>
+                <option>Scarf</option>
+                <option>Gloves</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>Brand</label>
+                <input id="in-brand" type="text" placeholder="e.g. Nike" />
+              </div>
+              <div class="field">
+                <label>Color</label>
+                <input id="in-color" type="text" placeholder="e.g. Navy blue" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>Size</label>
+                <input id="in-size" type="text" placeholder="e.g. M" />
+              </div>
+              <div class="field">
+                <label>Found location</label>
+                <input id="in-location" type="text" placeholder="e.g. Gym" />
+              </div>
+            </div>
+            <div class="field">
+              <label>Notes</label>
+              <textarea id="in-notes" rows="2" placeholder="Any extra details..."></textarea>
+            </div>
+            <button type="submit" class="btn primary">Add to Gallery</button>
+          </div>
+        </form>
+
+        <div class="staff-list-head">
+          <h2>Manage Items</h2>
+          <span id="count-badge" class="badge">0</span>
+        </div>
+        <div id="staff-list" class="staff-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="claim-modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" id="claim-close">&times;</button>
+      <h2>Claim this item</h2>
+      <div id="claim-preview" class="claim-preview"></div>
+      <div class="field">
+        <label>Your name</label>
+        <input id="claim-name" type="text" placeholder="Full name" />
+      </div>
+      <div class="field">
+        <label>Your class</label>
+        <input id="claim-class" type="text" placeholder="e.g. 8B" maxlength="4" />
+        <small class="hint">Grade number + letter A–F (like 8B)</small>
+        <p id="claim-error" class="error hidden"></p>
+      </div>
+      <button id="claim-submit" class="btn primary">Confirm Claim</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
