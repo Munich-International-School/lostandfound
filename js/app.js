@@ -109,14 +109,14 @@ function renderStaffList() {
       : `<div class="staff-thumb">No photo</div>`;
     const meta = [it.brand, it.color, it.size && "Size " + it.size].filter(Boolean).join(" · ");
     const status = it.claimed
-      ? `Claimed by ${esc(it.claimedBy)} (${esc(it.claimedClass)})`
+      ? `Claimed by ${it.claimedBy} (${it.claimedClass})`
       : "Available";
     row.innerHTML = `
       ${thumb}
       <div class="staff-info">
         <h4>${esc(it.type)}</h4>
         <p>${esc(meta) || "No tags"}</p>
-        <p>${status}</p>
+        <p>${esc(status)}</p>
       </div>
       <div class="staff-actions">
         ${it.claimed ? `<button class="btn ghost small" data-reset="${it.id}">Unclaim</button>` : ""}
