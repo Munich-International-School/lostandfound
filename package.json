@@ -1,0 +1,21 @@
+{
+  "name": "lostandfound",
+  "version": "1.0.0",
+  "description": "Simple school lost-and-found app backed by SQLite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"No tests configured\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/Munich-International-School/lostandfound"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "sqlite3": "^6.0.1"
+  }
+}
