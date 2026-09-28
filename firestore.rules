@@ -1,0 +1,61 @@
+rules_version = '2';
+
+// Paste into Firebase console > Firestore Database > Rules, then Publish.
+// STAFF_EMAIL here must match js/firebase-config.js.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isStaff() {
+      return request.auth != null && request.auth.token.email == "staff@example.com";
+    }
+
+    function claimPath(itemId) {
+      return /databases/$(database)/documents/claims/$(itemId);
+    }
+
+    function itemPath(itemId) {
+      return /databases/$(database)/documents/items/$(itemId);
+    }
+
+    function validItem(d) {
+      return d.keys().hasOnly(["type", "brand", "color", "size", "location", "notes", "photo", "claimed", "added"])
+        && d.type is string && d.type.size() > 0 && d.type.size() <= 40
+        && d.brand is string && d.brand.size() <= 100
+        && d.color is string && d.color.size() <= 100
+        && d.size is string && d.size.size() <= 40
+        && d.location is string && d.location.size() <= 100
+        && d.notes is string && d.notes.size() <= 1000
+        && d.photo is string && d.photo.size() <= 900000
+        && d.claimed == false
+        && d.added is int;
+    }
+
+    // Everyone can browse items. Only staff can add, edit or delete them.
+    // Anyone can claim an unclaimed item, but only by flipping `claimed` to true
+    // in the same batch that creates its claims/ record.
+    match /items/{itemId} {
+      allow read: if true;
+      allow create: if isStaff() && validItem(request.resource.data);
+      allow delete: if isStaff();
+      allow update: if isStaff()
+        || (resource.data.claimed == false
+            && request.resource.data.claimed == true
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["claimed"])
+            && !exists(claimPath(itemId))
+            && existsAfter(claimPath(itemId)));
+    }
+
+    // Student names and classes are kept apart from items so only staff can read them.
+    match /claims/{itemId} {
+      allow read, delete: if isStaff();
+      allow create: if request.resource.data.keys().hasOnly(["claimedBy", "claimedClass"])
+        && request.resource.data.claimedBy is string
+        && request.resource.data.claimedBy.size() > 0
+        && request.resource.data.claimedBy.size() <= 100
+        && request.resource.data.claimedClass is string
+        && request.resource.data.claimedClass.matches("^([1-9]|1[0-2])[A-F]$")
+        && get(itemPath(itemId)).data.claimed == false
+        && getAfter(itemPath(itemId)).data.claimed == true;
+    }
+  }
+}
