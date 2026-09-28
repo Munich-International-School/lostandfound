@@ -33,7 +33,12 @@ db.serialize(() => {
 });
 
 app.use(express.json({ limit: "10mb" }));
-app.use(express.static(__dirname));
+app.use("/css", express.static(path.join(__dirname, "css")));
+app.use("/js", express.static(path.join(__dirname, "js")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
 
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -90,7 +95,7 @@ app.get("/api/items", async (req, res) => {
 
 app.post("/api/items", async (req, res) => {
   const body = req.body || {};
-  if (!body.id || !body.type || !body.added) {
+  if (!body.id || !body.type || body.added === undefined || body.added === null) {
     return res.status(400).json({ error: "Missing required fields." });
   }
   try {
