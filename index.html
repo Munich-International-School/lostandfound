@@ -140,7 +140,7 @@
       <div id="claim-preview" class="claim-preview"></div>
       <div class="field">
         <label>Your name</label>
-        <input id="claim-name" type="text" placeholder="Full name" />
+        <input id="claim-name" type="text" placeholder="Full name" maxlength="100" />
       </div>
       <div class="field">
         <label>Your class</label>
@@ -157,8 +157,12 @@
       <button type="button" class="modal-close" id="login-close">&times;</button>
       <h2>Staff login</h2>
       <div class="field">
-        <label>Staff code</label>
-        <input id="login-code" type="password" autocomplete="current-password" required />
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="username" placeholder="name@mis-munich.de" required />
+      </div>
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required />
         <p id="login-error" class="error hidden"></p>
       </div>
       <button type="submit" class="btn primary">Log in</button>

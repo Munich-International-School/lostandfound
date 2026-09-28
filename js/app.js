@@ -1,15 +1,21 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
-  getFirestore, collection, doc, getDocs, addDoc, query, orderBy, writeBatch
+  getFirestore, connectFirestoreEmulator, collection, doc, getDoc, getDocs, addDoc, query, orderBy, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  getAuth, connectAuthEmulator, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { firebaseConfig, STAFF_EMAIL } from "./firebase-config.js";
+import { firebaseConfig, STAFF_DOMAIN, LIVE_HOST } from "./firebase-config.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
+
+// Local copies of the site talk to `firebase emulators:start`, never the live database.
+if (location.hostname !== LIVE_HOST) {
+  connectFirestoreEmulator(db, location.hostname, 8080);
+  connectAuthEmulator(auth, `http://${location.hostname}:9099`, { disableWarnings: true });
+}
 
 let items = [];
 let currentPhoto = "";
@@ -175,8 +181,12 @@ $("#search").addEventListener("input", renderGallery);
 $("#filter-type").addEventListener("change", renderGallery);
 $("#filter-status").addEventListener("change", renderGallery);
 
+function isStaffAccount(user) {
+  return Boolean(user?.email?.toLowerCase().endsWith("@" + STAFF_DOMAIN));
+}
+
 onAuthStateChanged(auth, user => {
-  isStaff = user?.email === STAFF_EMAIL;
+  isStaff = isStaffAccount(user);
 });
 
 async function showStaff() {
@@ -196,10 +206,10 @@ $("#staff-btn").addEventListener("click", () => {
 });
 
 function openLogin() {
-  $("#login-code").value = "";
+  $("#login-password").value = "";
   $("#login-error").classList.add("hidden");
   $("#login-modal").classList.remove("hidden");
-  $("#login-code").focus();
+  ($("#login-email").value ? $("#login-password") : $("#login-email")).focus();
 }
 
 function closeLogin() {
@@ -215,14 +225,22 @@ $("#login-form").addEventListener("submit", async e => {
   e.preventDefault();
   const err = $("#login-error");
   try {
-    await signInWithEmailAndPassword(auth, STAFF_EMAIL, $("#login-code").value);
+    const { user } = await signInWithEmailAndPassword(auth, $("#login-email").value.trim(), $("#login-password").value);
+    if (!isStaffAccount(user)) {
+      await signOut(auth);
+      err.textContent = `Staff accounts use an @${STAFF_DOMAIN} email.`;
+      err.classList.remove("hidden");
+      return;
+    }
     isStaff = true;
     closeLogin();
     await showStaff();
   } catch (error) {
-    err.textContent = error.code === "auth/too-many-requests"
-      ? "Too many attempts. Try again in a few minutes."
-      : "Wrong staff code.";
+    err.textContent = {
+      "auth/invalid-email": "Enter a valid email address.",
+      "auth/too-many-requests": "Too many attempts. Try again in a few minutes.",
+      "auth/network-request-failed": "No connection. Check your internet and try again."
+    }[error.code] || "Wrong email or password.";
     err.classList.remove("hidden");
   }
 });
@@ -342,12 +360,18 @@ function closeClaim() {
 }
 
 $("#claim-submit").addEventListener("click", async () => {
+  const id = claimingId;
   const name = $("#claim-name").value.trim();
   const cls = $("#claim-class").value.trim().toUpperCase();
   const err = $("#claim-error");
 
   if (!name) {
     err.textContent = "Please enter your name.";
+    err.classList.remove("hidden");
+    return;
+  }
+  if (name.length > 100) {
+    err.textContent = "Please shorten your name to 100 characters or fewer.";
     err.classList.remove("hidden");
     return;
   }
@@ -360,8 +384,8 @@ $("#claim-submit").addEventListener("click", async () => {
   try {
     // Both writes succeed together or not at all; the rules reject a second claim.
     const batch = writeBatch(db);
-    batch.update(doc(db, "items", claimingId), { claimed: true });
-    batch.set(doc(db, "claims", claimingId), { claimedBy: name, claimedClass: cls });
+    batch.update(doc(db, "items", id), { claimed: true });
+    batch.set(doc(db, "claims", id), { claimedBy: name, claimedClass: cls });
     await batch.commit();
     await loadItems();
     renderAll();
@@ -369,13 +393,25 @@ $("#claim-submit").addEventListener("click", async () => {
     toast("Claimed! Please collect it from staff.");
   } catch (error) {
     console.error(error);
-    err.textContent = error.code === "permission-denied"
-      ? "Sorry, this item has already been claimed."
-      : "Failed to claim item.";
+    err.textContent = await claimFailureMessage(id, error);
     err.classList.remove("hidden");
     loadItems().then(renderAll).catch(() => {});
   }
 });
+
+// The input is validated above, so a rejected claim usually means the item changed
+// since the page loaded. Look it up so the message says what actually happened.
+async function claimFailureMessage(id, error) {
+  if (error.code !== "permission-denied") return "Failed to claim item. Please try again.";
+  try {
+    const snap = await getDoc(doc(db, "items", id));
+    if (!snap.exists()) return "Sorry, this item is no longer listed.";
+    if (snap.data().claimed) return "Sorry, this item has already been claimed.";
+  } catch (lookupError) {
+    console.error(lookupError);
+  }
+  return "This item couldn't be claimed. Please ask a staff member.";
+}
 
 $("#claim-class").addEventListener("input", e => {
   e.target.value = e.target.value.toUpperCase();
