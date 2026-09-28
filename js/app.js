@@ -20,10 +20,16 @@ const staffList = $("#staff-list");
 const storageBanner = $("#storage-banner");
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...options
+    });
+  } catch (error) {
+    error.apiUnavailable = true;
+    throw error;
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.error || "Request failed");
@@ -35,8 +41,10 @@ async function api(path, options = {}) {
 }
 
 function isApiUnavailable(error) {
-  const isStaticHost = window.location.protocol === "file:" || window.location.hostname.endsWith("github.io");
-  return error instanceof TypeError || error?.status >= 500 || (isStaticHost && error?.status === 404);
+  const hostParts = window.location.hostname.split(".");
+  const isGitHubPages = hostParts.length >= 2 && hostParts.slice(-2).join(".") === "github.io";
+  const isStaticHost = window.location.protocol === "file:" || isGitHubPages;
+  return Boolean(error?.apiUnavailable) || error?.status >= 500 || (isStaticHost && error?.status === 404);
 }
 
 function createId() {
