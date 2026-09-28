@@ -4,10 +4,6 @@ let items = [];
 let currentPhoto = "";
 let claimingId = null;
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
 function esc(str) {
   return String(str || "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -232,18 +228,13 @@ $("#add-form").addEventListener("submit", async e => {
   if (!type) return;
 
   const payload = {
-    id: uid(),
     type,
     brand: $("#in-brand").value.trim(),
     color: $("#in-color").value.trim(),
     size: $("#in-size").value.trim(),
     location: $("#in-location").value.trim(),
     notes: $("#in-notes").value.trim(),
-    photo: currentPhoto,
-    claimed: false,
-    claimedBy: "",
-    claimedClass: "",
-    added: Date.now()
+    photo: currentPhoto
   };
 
   try {

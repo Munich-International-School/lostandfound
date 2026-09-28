@@ -1,6 +1,6 @@
 # Lost & Found
 
-Simple Lost & Found web app with a SQLite database stored in the repository at `/data/lostandfound.sqlite`.
+Simple Lost & Found web app with a SQLite database file stored locally in the project folder at `/data/lostandfound.sqlite`.
 
 ## Run locally
 

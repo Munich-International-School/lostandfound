@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const { randomUUID } = require("crypto");
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 
@@ -10,6 +11,7 @@ const dataDir = path.join(__dirname, "data");
 const dbPath = path.join(dataDir, "lostandfound.sqlite");
 
 fs.mkdirSync(dataDir, { recursive: true });
+const indexHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 
 const db = new sqlite3.Database(dbPath);
 
@@ -37,7 +39,7 @@ app.use("/css", express.static(path.join(__dirname, "css")));
 app.use("/js", express.static(path.join(__dirname, "js")));
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  res.type("html").send(indexHtml);
 });
 
 function run(sql, params = []) {
@@ -95,9 +97,11 @@ app.get("/api/items", async (req, res) => {
 
 app.post("/api/items", async (req, res) => {
   const body = req.body || {};
-  if (!body.id || !body.type || body.added === undefined || body.added === null) {
+  if (!body.type) {
     return res.status(400).json({ error: "Missing required fields." });
   }
+  const itemId = randomUUID();
+  const addedAt = Date.now();
   try {
     await run(
       `INSERT INTO items (
@@ -105,7 +109,7 @@ app.post("/api/items", async (req, res) => {
         claimed, claimed_by, claimed_class, added
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        body.id,
+        itemId,
         body.type,
         body.brand || "",
         body.color || "",
@@ -113,13 +117,13 @@ app.post("/api/items", async (req, res) => {
         body.location || "",
         body.notes || "",
         body.photo || "",
-        body.claimed ? 1 : 0,
-        body.claimedBy || "",
-        body.claimedClass || "",
-        Number(body.added)
+        0,
+        "",
+        "",
+        addedAt
       ]
     );
-    const item = await get("SELECT * FROM items WHERE id = ?", [body.id]);
+    const item = await get("SELECT * FROM items WHERE id = ?", [itemId]);
     return res.status(201).json(mapRow(item));
   } catch (err) {
     return res.status(500).json({ error: "Failed to save item." });
