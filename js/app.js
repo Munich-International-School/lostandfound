@@ -153,13 +153,13 @@ async function initStore() {
 }
 
 function updateStorageBanner() {
+  storageBanner.classList.remove("hidden", "local");
   if (storageMode === "local") {
     storageBanner.textContent = "GitHub Pages mode: items are saved only in this browser.";
-    storageBanner.className = "storage-banner local";
+    storageBanner.classList.add("local");
     return;
   }
   storageBanner.textContent = "Shared server mode: items sync through the school database.";
-  storageBanner.className = "storage-banner";
 }
 
 async function loadItems() {
