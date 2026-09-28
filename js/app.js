@@ -35,7 +35,7 @@ async function api(path, options = {}) {
 }
 
 function isApiUnavailable(error) {
-  return error instanceof TypeError || error?.status === 404;
+  return error instanceof TypeError || error?.status === 404 || error?.status >= 500;
 }
 
 function createId() {
@@ -162,13 +162,15 @@ async function initStore() {
 }
 
 function updateStorageBanner() {
-  storageBanner.classList.remove("hidden", "local");
   if (storageMode === "local") {
+    storageBanner.classList.remove("hidden");
     storageBanner.textContent = "GitHub Pages mode: items are saved only in this browser.";
     storageBanner.classList.add("local");
     return;
   }
-  storageBanner.textContent = "Shared server mode: items sync through the school database.";
+  storageBanner.classList.add("hidden");
+  storageBanner.classList.remove("local");
+  storageBanner.textContent = "";
 }
 
 async function loadItems() {
