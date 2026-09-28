@@ -320,6 +320,7 @@ function toast(msg, kind) {
   const t = $("#toast");
   t.textContent = msg;
   t.className = "toast" + (kind ? " " + kind : "");
+  t.classList.remove("hidden");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add("hidden"), 2600);
 }
