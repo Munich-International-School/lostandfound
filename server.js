@@ -138,11 +138,18 @@ app.patch("/api/items/:id/claim", async (req, res) => {
   }
   try {
     const result = await run(
-      "UPDATE items SET claimed = 1, claimed_by = ?, claimed_class = ? WHERE id = ?",
+      "UPDATE items SET claimed = 1, claimed_by = ?, claimed_class = ? WHERE id = ? AND claimed = 0",
       [claimedBy, claimedClass, id]
     );
     if (!result.changes) {
-      return res.status(404).json({ error: "Item not found." });
+      const existing = await get("SELECT claimed FROM items WHERE id = ?", [id]);
+      if (!existing) {
+        return res.status(404).json({ error: "Item not found." });
+      }
+      if (existing.claimed) {
+        return res.status(409).json({ error: "Item has already been claimed." });
+      }
+      return res.status(500).json({ error: "Failed to claim item." });
     }
     const item = await get("SELECT * FROM items WHERE id = ?", [id]);
     return res.json(mapRow(item));
