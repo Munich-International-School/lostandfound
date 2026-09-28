@@ -1,8 +1,20 @@
-const STAFF_CODE = "102030";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {
+  getFirestore, collection, doc, getDocs, addDoc, query, orderBy, writeBatch
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { firebaseConfig, STAFF_EMAIL } from "./firebase-config.js";
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
 
 let items = [];
 let currentPhoto = "";
 let claimingId = null;
+let isStaff = false;
 
 function esc(str) {
   return String(str || "").replace(/[&<>"']/g, c => ({
@@ -15,21 +27,15 @@ const gallery = $("#gallery");
 const emptyState = $("#empty");
 const staffList = $("#staff-list");
 
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || "Request failed");
-  }
-  if (response.status === 204) return null;
-  return response.json();
-}
-
+// Claimer names live in a separate staff-only collection (see firestore.rules).
 async function loadItems() {
-  items = await api("/api/items");
+  const snap = await getDocs(query(collection(db, "items"), orderBy("added", "desc")));
+  items = snap.docs.map(d => ({ id: d.id, ...d.data(), claimedBy: "", claimedClass: "" }));
+  if (isStaff) {
+    const claims = await getDocs(collection(db, "claims"));
+    const byId = new Map(claims.docs.map(d => [d.id, d.data()]));
+    items.forEach(it => Object.assign(it, byId.get(it.id)));
+  }
 }
 
 function switchView(view) {
@@ -60,7 +66,7 @@ function renderGallery() {
     const card = document.createElement("div");
     card.className = "card";
     const img = it.photo
-      ? `<img src="${it.photo}" alt="${esc(it.type)}" />`
+      ? `<img src="${esc(it.photo)}" alt="${esc(it.type)}" />`
       : `<div class="no-img">No photo</div>`;
     const statusClass = it.claimed ? "claimed" : "available";
     const statusText = it.claimed ? "Claimed" : "Available";
@@ -105,12 +111,12 @@ function renderStaffList() {
     const row = document.createElement("div");
     row.className = "staff-row";
     const thumb = it.photo
-      ? `<img class="staff-thumb" src="${it.photo}" alt="" />`
+      ? `<img class="staff-thumb" src="${esc(it.photo)}" alt="" />`
       : `<div class="staff-thumb">No photo</div>`;
     const meta = [it.brand, it.color, it.size && "Size " + it.size].filter(Boolean).join(" · ");
-    const status = it.claimed
-      ? `Claimed by ${it.claimedBy} (${it.claimedClass})`
-      : "Available";
+    const status = !it.claimed
+      ? "Available"
+      : it.claimedBy ? `Claimed by ${it.claimedBy} (${it.claimedClass})` : "Claimed";
     row.innerHTML = `
       ${thumb}
       <div class="staff-info">
@@ -128,12 +134,16 @@ function renderStaffList() {
   staffList.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
-        await api(`/api/items/${btn.dataset.del}`, { method: "DELETE" });
+        const batch = writeBatch(db);
+        batch.delete(doc(db, "items", btn.dataset.del));
+        batch.delete(doc(db, "claims", btn.dataset.del));
+        await batch.commit();
         await loadItems();
         renderAll();
         toast("Item deleted", "warn");
       } catch (err) {
-        toast(err.message || "Failed to delete item", "err");
+        console.error(err);
+        toast("Failed to delete item", "err");
       }
     });
   });
@@ -141,12 +151,16 @@ function renderStaffList() {
   staffList.querySelectorAll("[data-reset]").forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
-        await api(`/api/items/${btn.dataset.reset}/unclaim`, { method: "PATCH" });
+        const batch = writeBatch(db);
+        batch.update(doc(db, "items", btn.dataset.reset), { claimed: false });
+        batch.delete(doc(db, "claims", btn.dataset.reset));
+        await batch.commit();
         await loadItems();
         renderAll();
         toast("Item marked available");
       } catch (err) {
-        toast(err.message || "Failed to update item", "err");
+        console.error(err);
+        toast("Failed to update item", "err");
       }
     });
   });
@@ -161,19 +175,69 @@ $("#search").addEventListener("input", renderGallery);
 $("#filter-type").addEventListener("change", renderGallery);
 $("#filter-status").addEventListener("change", renderGallery);
 
-let codeBuffer = "";
-document.addEventListener("keydown", e => {
-  if (e.target.matches("input, textarea")) return;
-  if (!/^\d$/.test(e.key)) return;
-  codeBuffer = (codeBuffer + e.key).slice(-STAFF_CODE.length);
-  if (codeBuffer === STAFF_CODE) {
-    codeBuffer = "";
+onAuthStateChanged(auth, user => {
+  isStaff = user?.email === STAFF_EMAIL;
+});
+
+async function showStaff() {
+  try {
+    await loadItems();
+    renderAll();
     switchView("staff");
-    renderStaffList();
+  } catch (err) {
+    console.error(err);
+    toast("Could not load staff view", "err");
+  }
+}
+
+$("#staff-btn").addEventListener("click", () => {
+  if (isStaff) showStaff();
+  else openLogin();
+});
+
+function openLogin() {
+  $("#login-code").value = "";
+  $("#login-error").classList.add("hidden");
+  $("#login-modal").classList.remove("hidden");
+  $("#login-code").focus();
+}
+
+function closeLogin() {
+  $("#login-modal").classList.add("hidden");
+}
+
+$("#login-close").addEventListener("click", closeLogin);
+$("#login-modal").addEventListener("click", e => {
+  if (e.target === $("#login-modal")) closeLogin();
+});
+
+$("#login-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const err = $("#login-error");
+  try {
+    await signInWithEmailAndPassword(auth, STAFF_EMAIL, $("#login-code").value);
+    isStaff = true;
+    closeLogin();
+    await showStaff();
+  } catch (error) {
+    err.textContent = error.code === "auth/too-many-requests"
+      ? "Too many attempts. Try again in a few minutes."
+      : "Wrong staff code.";
+    err.classList.remove("hidden");
   }
 });
 
-$("#lock-btn").addEventListener("click", () => switchView("gallery"));
+$("#lock-btn").addEventListener("click", async () => {
+  await signOut(auth);
+  isStaff = false;
+  switchView("gallery");
+  try {
+    await loadItems();
+    renderAll();
+  } catch (err) {
+    console.error(err);
+  }
+});
 
 $("#photo-input").addEventListener("change", e => {
   const file = e.target.files[0];
@@ -227,28 +291,28 @@ $("#add-form").addEventListener("submit", async e => {
   const type = $("#in-type").value;
   if (!type) return;
 
-  const payload = {
+  const item = {
     type,
     brand: $("#in-brand").value.trim(),
     color: $("#in-color").value.trim(),
     size: $("#in-size").value.trim(),
     location: $("#in-location").value.trim(),
     notes: $("#in-notes").value.trim(),
-    photo: currentPhoto
+    photo: currentPhoto,
+    claimed: false,
+    added: Date.now()
   };
 
   try {
-    await api("/api/items", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
+    await addDoc(collection(db, "items"), item);
     await loadItems();
     e.target.reset();
     clearPhoto();
     renderAll();
     toast("Item added to gallery");
   } catch (err) {
-    toast(err.message || "Failed to add item", "err");
+    console.error(err);
+    toast("Failed to add item", "err");
   }
 });
 
@@ -257,7 +321,7 @@ function openClaim(id) {
   if (!it) return;
   claimingId = id;
   const preview = it.photo
-    ? `<img src="${it.photo}" alt="" />`
+    ? `<img src="${esc(it.photo)}" alt="" />`
     : `<div class="cp-icon">No photo</div>`;
   const meta = [it.brand, it.color].filter(Boolean).join(" · ") || "No tags";
   $("#claim-preview").innerHTML = `${preview}<div><h4>${esc(it.type)}</h4><p>${esc(meta)}</p></div>`;
@@ -294,20 +358,22 @@ $("#claim-submit").addEventListener("click", async () => {
   }
 
   try {
-    await api(`/api/items/${claimingId}/claim`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        claimedBy: name,
-        claimedClass: cls
-      })
-    });
+    // Both writes succeed together or not at all; the rules reject a second claim.
+    const batch = writeBatch(db);
+    batch.update(doc(db, "items", claimingId), { claimed: true });
+    batch.set(doc(db, "claims", claimingId), { claimedBy: name, claimedClass: cls });
+    await batch.commit();
     await loadItems();
     renderAll();
     closeClaim();
     toast("Claimed! Please collect it from staff.");
   } catch (error) {
-    err.textContent = error.message || "Failed to claim item.";
+    console.error(error);
+    err.textContent = error.code === "permission-denied"
+      ? "Sorry, this item has already been claimed."
+      : "Failed to claim item.";
     err.classList.remove("hidden");
+    loadItems().then(renderAll).catch(() => {});
   }
 });
 
@@ -330,7 +396,8 @@ async function init() {
     await loadItems();
     renderAll();
   } catch (err) {
-    toast("Could not connect to database server.", "err");
+    console.error(err);
+    toast("Could not connect to the database.", "err");
   }
 }
 
