@@ -1,6 +1,6 @@
 # Lost & Found
 
-Simple Lost & Found web app with a SQLite database file stored locally in the project folder at `/data/lostandfound.sqlite`.
+Simple Lost & Found web app backed by MongoDB.
 
 ## Run locally
 
@@ -8,8 +8,15 @@ Simple Lost & Found web app with a SQLite database file stored locally in the pr
    ```bash
    npm install
    ```
-2. Start the app:
+2. Configure the database connection:
+   ```bash
+   cp .env.example .env
+   ```
+   Then set `MONGODB_URI` in `.env` to your connection string. If you use MongoDB Atlas, also add your machine's IP address under **Network Access**, or the app can't reach the cluster.
+3. Start the app:
    ```bash
    npm start
    ```
-3. Open `http://localhost:3000`.
+4. Open `http://localhost:3000`.
+
+If the database is unreachable when the app starts, the server still runs. API requests return a 503 error until the connection succeeds.
