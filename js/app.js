@@ -1,25 +1,8 @@
 const STAFF_CODE = "102030";
-const STORE_KEY = "lostFoundItems";
 
-let items = load();
+let items = [];
 let currentPhoto = "";
 let claimingId = null;
-
-function load() {
-  try {
-    return JSON.parse(localStorage.getItem(STORE_KEY)) || [];
-  } catch {
-    return [];
-  }
-}
-
-function save() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(items));
-}
-
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
 
 function esc(str) {
   return String(str || "").replace(/[&<>"']/g, c => ({
@@ -31,6 +14,23 @@ const $ = sel => document.querySelector(sel);
 const gallery = $("#gallery");
 const emptyState = $("#empty");
 const staffList = $("#staff-list");
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...options
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Request failed");
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function loadItems() {
+  items = await api("/api/items");
+}
 
 function switchView(view) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
@@ -109,14 +109,14 @@ function renderStaffList() {
       : `<div class="staff-thumb">No photo</div>`;
     const meta = [it.brand, it.color, it.size && "Size " + it.size].filter(Boolean).join(" · ");
     const status = it.claimed
-      ? `Claimed by ${esc(it.claimedBy)} (${esc(it.claimedClass)})`
+      ? `Claimed by ${it.claimedBy} (${it.claimedClass})`
       : "Available";
     row.innerHTML = `
       ${thumb}
       <div class="staff-info">
         <h4>${esc(it.type)}</h4>
         <p>${esc(meta) || "No tags"}</p>
-        <p>${status}</p>
+        <p>${esc(status)}</p>
       </div>
       <div class="staff-actions">
         ${it.claimed ? `<button class="btn ghost small" data-reset="${it.id}">Unclaim</button>` : ""}
@@ -126,23 +126,27 @@ function renderStaffList() {
   });
 
   staffList.querySelectorAll("[data-del]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      items = items.filter(i => i.id !== btn.dataset.del);
-      save();
-      renderAll();
-      toast("Item deleted", "warn");
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/api/items/${btn.dataset.del}`, { method: "DELETE" });
+        await loadItems();
+        renderAll();
+        toast("Item deleted", "warn");
+      } catch (err) {
+        toast(err.message || "Failed to delete item", "err");
+      }
     });
   });
+
   staffList.querySelectorAll("[data-reset]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const it = items.find(i => i.id === btn.dataset.reset);
-      if (it) {
-        it.claimed = false;
-        it.claimedBy = "";
-        it.claimedClass = "";
-        save();
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/api/items/${btn.dataset.reset}/unclaim`, { method: "PATCH" });
+        await loadItems();
         renderAll();
         toast("Item marked available");
+      } catch (err) {
+        toast(err.message || "Failed to update item", "err");
       }
     });
   });
@@ -218,29 +222,34 @@ function resizeImage(src, max, cb) {
   img.src = src;
 }
 
-$("#add-form").addEventListener("submit", e => {
+$("#add-form").addEventListener("submit", async e => {
   e.preventDefault();
   const type = $("#in-type").value;
   if (!type) return;
-  items.unshift({
-    id: uid(),
+
+  const payload = {
     type,
     brand: $("#in-brand").value.trim(),
     color: $("#in-color").value.trim(),
     size: $("#in-size").value.trim(),
     location: $("#in-location").value.trim(),
     notes: $("#in-notes").value.trim(),
-    photo: currentPhoto,
-    claimed: false,
-    claimedBy: "",
-    claimedClass: "",
-    added: Date.now()
-  });
-  save();
-  e.target.reset();
-  clearPhoto();
-  renderAll();
-  toast("Item added to gallery");
+    photo: currentPhoto
+  };
+
+  try {
+    await api("/api/items", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    await loadItems();
+    e.target.reset();
+    clearPhoto();
+    renderAll();
+    toast("Item added to gallery");
+  } catch (err) {
+    toast(err.message || "Failed to add item", "err");
+  }
 });
 
 function openClaim(id) {
@@ -268,7 +277,7 @@ function closeClaim() {
   claimingId = null;
 }
 
-$("#claim-submit").addEventListener("click", () => {
+$("#claim-submit").addEventListener("click", async () => {
   const name = $("#claim-name").value.trim();
   const cls = $("#claim-class").value.trim().toUpperCase();
   const err = $("#claim-error");
@@ -284,16 +293,22 @@ $("#claim-submit").addEventListener("click", () => {
     return;
   }
 
-  const it = items.find(i => i.id === claimingId);
-  if (it) {
-    it.claimed = true;
-    it.claimedBy = name;
-    it.claimedClass = cls;
-    save();
+  try {
+    await api(`/api/items/${claimingId}/claim`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        claimedBy: name,
+        claimedClass: cls
+      })
+    });
+    await loadItems();
     renderAll();
+    closeClaim();
+    toast("Claimed! Please collect it from staff.");
+  } catch (error) {
+    err.textContent = error.message || "Failed to claim item.";
+    err.classList.remove("hidden");
   }
-  closeClaim();
-  toast("Claimed! Please collect it from staff.");
 });
 
 $("#claim-class").addEventListener("input", e => {
@@ -305,8 +320,18 @@ function toast(msg, kind) {
   const t = $("#toast");
   t.textContent = msg;
   t.className = "toast" + (kind ? " " + kind : "");
+  t.classList.remove("hidden");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add("hidden"), 2600);
 }
 
-renderAll();
+async function init() {
+  try {
+    await loadItems();
+    renderAll();
+  } catch (err) {
+    toast("Could not connect to database server.", "err");
+  }
+}
+
+init();
