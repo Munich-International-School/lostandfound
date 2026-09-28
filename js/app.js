@@ -1,8 +1,11 @@
 const STAFF_CODE = "102030";
+const STORAGE_KEY = "lostandfound-items";
 
 let items = [];
 let currentPhoto = "";
 let claimingId = null;
+let store;
+let storageMode = "server";
 
 function esc(str) {
   return String(str || "").replace(/[&<>"']/g, c => ({
@@ -14,6 +17,7 @@ const $ = sel => document.querySelector(sel);
 const gallery = $("#gallery");
 const emptyState = $("#empty");
 const staffList = $("#staff-list");
+const storageBanner = $("#storage-banner");
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -28,8 +32,138 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+function createId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `item-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function sortItems(list) {
+  return [...list].sort((a, b) => (b.added || 0) - (a.added || 0));
+}
+
+function normalizeItem(item) {
+  return {
+    id: item.id || createId(),
+    type: item.type || "",
+    brand: item.brand || "",
+    color: item.color || "",
+    size: item.size || "",
+    location: item.location || "",
+    notes: item.notes || "",
+    photo: item.photo || "",
+    claimed: Boolean(item.claimed),
+    claimedBy: item.claimedBy || "",
+    claimedClass: item.claimedClass || "",
+    added: item.added || Date.now()
+  };
+}
+
+function readLocalItems() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? sortItems(parsed.map(normalizeItem)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalItems(nextItems) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sortItems(nextItems).map(normalizeItem)));
+}
+
+function createLocalStore() {
+  return {
+    async list() {
+      return readLocalItems();
+    },
+    async add(payload) {
+      if (!payload.type) throw new Error("Missing required fields.");
+      const nextItem = normalizeItem({
+        ...payload,
+        id: createId(),
+        claimed: false,
+        claimedBy: "",
+        claimedClass: "",
+        added: Date.now()
+      });
+      const nextItems = [nextItem, ...readLocalItems()];
+      writeLocalItems(nextItems);
+      return nextItem;
+    },
+    async claim(id, payload) {
+      const nextItems = readLocalItems();
+      const item = nextItems.find(entry => entry.id === id);
+      if (!item) throw new Error("Item not found.");
+      if (item.claimed) throw new Error("Item has already been claimed.");
+      item.claimed = true;
+      item.claimedBy = payload.claimedBy || "";
+      item.claimedClass = payload.claimedClass || "";
+      writeLocalItems(nextItems);
+      return normalizeItem(item);
+    },
+    async unclaim(id) {
+      const nextItems = readLocalItems();
+      const item = nextItems.find(entry => entry.id === id);
+      if (!item) throw new Error("Item not found.");
+      item.claimed = false;
+      item.claimedBy = "";
+      item.claimedClass = "";
+      writeLocalItems(nextItems);
+      return normalizeItem(item);
+    },
+    async remove(id) {
+      const nextItems = readLocalItems();
+      const itemExists = nextItems.some(entry => entry.id === id);
+      if (!itemExists) throw new Error("Item not found.");
+      writeLocalItems(nextItems.filter(entry => entry.id !== id));
+    }
+  };
+}
+
+async function initStore() {
+  try {
+    const initialItems = await api("/api/items");
+    storageMode = "server";
+    return {
+      initialItems,
+      client: {
+        list: () => api("/api/items"),
+        add: payload => api("/api/items", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        }),
+        claim: (id, payload) => api(`/api/items/${id}/claim`, {
+          method: "PATCH",
+          body: JSON.stringify(payload)
+        }),
+        unclaim: id => api(`/api/items/${id}/unclaim`, { method: "PATCH" }),
+        remove: id => api(`/api/items/${id}`, { method: "DELETE" })
+      }
+    };
+  } catch {
+    storageMode = "local";
+    return {
+      initialItems: readLocalItems(),
+      client: createLocalStore()
+    };
+  }
+}
+
+function updateStorageBanner() {
+  if (storageMode === "local") {
+    storageBanner.textContent = "GitHub Pages mode: items are saved only in this browser.";
+    storageBanner.className = "storage-banner local";
+    return;
+  }
+  storageBanner.textContent = "Shared server mode: items sync through the school database.";
+  storageBanner.className = "storage-banner";
+}
+
 async function loadItems() {
-  items = await api("/api/items");
+  items = await store.list();
 }
 
 function switchView(view) {
@@ -128,7 +262,7 @@ function renderStaffList() {
   staffList.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
-        await api(`/api/items/${btn.dataset.del}`, { method: "DELETE" });
+        await store.remove(btn.dataset.del);
         await loadItems();
         renderAll();
         toast("Item deleted", "warn");
@@ -141,7 +275,7 @@ function renderStaffList() {
   staffList.querySelectorAll("[data-reset]").forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
-        await api(`/api/items/${btn.dataset.reset}/unclaim`, { method: "PATCH" });
+        await store.unclaim(btn.dataset.reset);
         await loadItems();
         renderAll();
         toast("Item marked available");
@@ -238,10 +372,7 @@ $("#add-form").addEventListener("submit", async e => {
   };
 
   try {
-    await api("/api/items", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
+    await store.add(payload);
     await loadItems();
     e.target.reset();
     clearPhoto();
@@ -294,12 +425,9 @@ $("#claim-submit").addEventListener("click", async () => {
   }
 
   try {
-    await api(`/api/items/${claimingId}/claim`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        claimedBy: name,
-        claimedClass: cls
-      })
+    await store.claim(claimingId, {
+      claimedBy: name,
+      claimedClass: cls
     });
     await loadItems();
     renderAll();
@@ -327,10 +455,16 @@ function toast(msg, kind) {
 
 async function init() {
   try {
-    await loadItems();
+    const { initialItems, client } = await initStore();
+    store = client;
+    items = initialItems;
+    updateStorageBanner();
     renderAll();
+    if (storageMode === "local") {
+      toast("Running without a server. Data stays in this browser.", "warn");
+    }
   } catch (err) {
-    toast("Could not connect to database server.", "err");
+    toast("Could not start the app.", "err");
   }
 }
 
