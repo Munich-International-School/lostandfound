@@ -9,6 +9,10 @@ export const firebaseConfig = {
   appId: "1:785223982869:web:b6eaf77aa48ab0aade531c"
 };
 
-// The shared staff login. The staff code is this account's password.
+// Staff sign in with their own account (Authentication > Users) on this email domain.
 // Must match isStaff() in firestore.rules.
-export const STAFF_EMAIL = "staff@example.com";
+export const STAFF_DOMAIN = "mis-munich.de";
+
+// Only the published site uses the live database. Anywhere else (e.g. localhost)
+// uses the Firebase emulators, so local testing never touches real records.
+export const LIVE_HOST = "munich-international-school.github.io";
