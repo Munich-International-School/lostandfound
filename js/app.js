@@ -35,7 +35,8 @@ async function api(path, options = {}) {
 }
 
 function isApiUnavailable(error) {
-  return error instanceof TypeError || error?.status === 404 || error?.status >= 500;
+  const isStaticHost = window.location.protocol === "file:" || window.location.hostname.endsWith("github.io");
+  return error instanceof TypeError || error?.status >= 500 || (isStaticHost && error?.status === 404);
 }
 
 function createId() {
